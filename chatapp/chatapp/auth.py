@@ -57,3 +57,13 @@ def login_required(view):
             return jsonify({'error': 'Login required.'}), 401
         return view(**kwargs)
     return wrapped_view
+
+def admin_required(view):
+    @functools.wraps(view)
+    def wrapped_view(**kwargs):
+        if g.user is None:
+            return jsonify({'error': 'Login required.'}), 401
+        if not g.user['is_admin']:
+            return jsonify({'error': 'Admin access required.'}), 403
+        return view(**kwargs)
+    return wrapped_view

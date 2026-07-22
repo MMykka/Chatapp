@@ -25,11 +25,10 @@ CREATE TABLE chats (
 -- One row per message inside a chat. Belongs to exactly one chat.
 CREATE TABLE messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  chat_id INTEGER NOT NULL,                        -- which chat this message belongs to
-  role TEXT NOT NULL,                              -- 'user' or 'assistant'
-  content TEXT NOT NULL,                           -- the actual message text
-  sources TEXT NOT NULL,                           -- JSON-encoded list of filenames, e.g. '["policy.pdf"]'
-                                                    -- store with json.dumps(list) -> string
-                                                    -- read back with json.loads(string) -> list
-  FOREIGN KEY (chat_id) REFERENCES chats (id)      -- chat_id must match a real chats.id
+  chat_id INTEGER NOT NULL,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  sources TEXT NOT NULL,
+  created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (chat_id) REFERENCES chats (id)
 );
