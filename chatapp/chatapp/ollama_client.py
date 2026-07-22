@@ -6,10 +6,32 @@ OLLAMA_HOST = "http://localhost:11434"
 def check_connection():
     try:
         response = requests.get(f"{OLLAMA_HOST}/api/tags", timeout=2)
-        data = response.json()          # what turns the response into a Python dict?
+        data = response.json()          
         models = data['models']
         if models:
-            return True, models[0]['name']   # which key holds the model's name?
-        return True, None                    # connected, but no models installed
-    except requests.exceptions.RequestException:                            # what exception do you catch for "request failed entirely"?
+            return True, models[0]['name']   
+        return True, None                  
+    except requests.exceptions.RequestException:                           
         return False, None
+
+
+def chat_completion(messages, context_chunks=None):
+    try:
+        if context_chunks:
+            context_text = "\n".join(context_chunks)
+            system_message = {"role": "system", "content": f"Use the following context to answer the question:\n{context_text}"}
+            messages = [system_message] + messages   
+        
+        payload = {"model": "llama3.2", "messages": messages, "stream": False}
+        response = requests.post(f"{OLLAMA_HOST}/api/chat", json=payload, timeout=10)
+        return response.json()["message"]["content"]
+    except requests.exceptions.RequestException:
+        return "Sorry, I couldn't reach the model right now."                          
+   
+def get_embedding(text):
+    try:
+        payload = {"model": "nomic-embed-text", "prompt": text}
+        response = requests.post(f"{OLLAMA_HOST}/api/embeddings", json=payload, timeout=10)
+        return response.json()["embedding"]
+    except requests.exceptions.RequestException:
+        return None
