@@ -6,7 +6,6 @@ from flask import Blueprint, g, jsonify, abort
 from chatapp.auth import login_required
 from chatapp.db import get_db
 
-from chatapp.db import get_db
 
 
 bp = Blueprint('chats', __name__, url_prefix='/api/chats')

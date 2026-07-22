@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Chat{% endblock %}
+{% block body %}
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <button id="new-chat-btn" class="new-chat-btn">
+        <span class="icon">+</span> New chat
+      </button>
+    </div>
+
+    <nav id="chat-list" class="chat-list">
+      <!-- chat items injected by chat.js -->
+    </nav>
+
+    <div class="sidebar-bottom">
+      <div class="status-row">
+        <span id="ollama-dot" class="status-dot" title="Checking connection..."></span>
+        <span id="ollama-status-text">Checking model connection…</span>
+      </div>
+
+      {% if is_admin %}
+      <button id="docs-toggle-btn" class="ghost-btn">Documents</button>
+      {% endif %}
+
+      <div class="user-row">
+        <span id="user-email" class="user-email">{{ user_email }}</span>
+        <button id="logout-btn" class="ghost-btn small">Log out</button>
+      </div>
+    </div>
+  </aside>
+
+  {% if is_admin %}
+  <aside id="docs-panel" class="docs-panel" hidden>
+    <div class="docs-panel-header">
+      <h2>Documents</h2>
+      <button id="docs-close-btn" class="ghost-btn small">Close</button>
+    </div>
+    <p class="docs-hint">Admins only. Uploaded files become searchable context for every chat.</p>
+
+    <form id="upload-form" class="upload-form">
+      <input type="file" id="doc-file" name="file" accept=".txt,.md,.pdf" required>
+      <button type="submit">Upload</button>
+    </form>
+    <p id="upload-status" class="upload-status"></p>
+
+    <ul id="doc-list" class="doc-list">
+      <!-- document items injected by chat.js -->
+    </ul>
+  </aside>
+  {% endif %}
+
+  <main class="chat-main">
+    <header class="chat-header">
+      <h1 id="chat-title">New chat</h1>
+    </header>
+
+    <div id="messages" class="messages">
+      <div class="empty-state" id="empty-state">
+        <p>Ask anything. If relevant documents have been uploaded, the assistant will use them automatically.</p>
+      </div>
+    </div>
+
+    <form id="composer" class="composer">
+      <textarea id="composer-input" placeholder="Message the assistant…" rows="1" required></textarea>
+      <button type="submit" id="send-btn">Send</button>
+    </form>
+  </main>
+</div>
+
+<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+{% endblock %}

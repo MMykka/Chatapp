@@ -1,5 +1,6 @@
 import os
-from flask import Flask
+from flask import Flask, render_template
+
 
 def create_app(test_config=None):
     #create and configure the app
@@ -18,10 +19,13 @@ def create_app(test_config=None):
     # ensure the instance folder exists
     os.makedirs(app.instance_path, exist_ok=True)
 
-    # a simple page that says hello
-    @app.route('/hello')
-    def hello():
-        return 'Hello, World!'
+    @app.route('/login')
+    def login_page():
+        return render_template('login.html')
+
+    @app.route('/chat')
+    def chat_page():
+        return render_template('chat.html', is_admin=True, user_email='you@ccintl.com')
 
     from . import db
     db.init_app(app)
