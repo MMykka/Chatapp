@@ -3,6 +3,7 @@
 DROP TABLE IF EXISTS user;
 DROP TABLE IF EXISTS chats;
 DROP TABLE IF EXISTS messages;
+DROP TABLE IF EXISTS documents;
 
 -- One row per account.
 -- is_admin: 0 = regular user, 1 = admin (can upload/manage documents)
@@ -32,3 +33,12 @@ CREATE TABLE messages (
   created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (chat_id) REFERENCES chats (id)
 );
+
+CREATE TABLE documents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  filename TEXT NOT NULL,
+  uploaded_by INTEGER NOT NULL,
+  uploaded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (uploaded_by) REFERENCES user (id)
+);
+

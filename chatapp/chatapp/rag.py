@@ -42,6 +42,10 @@ def add_document(filepath, filename):
             metadatas=[{"filename": filename}]
         )
 
+        
+def delete_document(filename):
+    collection.delete(where={"filename": filename})
+
 
 def retrieve(question, n_results=3):
     query_embedding = get_embedding(question)
