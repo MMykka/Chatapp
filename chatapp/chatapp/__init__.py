@@ -19,6 +19,10 @@ def create_app(test_config=None):
     # ensure the instance folder exists
     os.makedirs(app.instance_path, exist_ok=True)
 
+    @app.route('/')
+    def index():
+        return redirect('/login')
+
     @app.route('/login')
     def login_page():
         return render_template('login.html')
