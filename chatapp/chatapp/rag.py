@@ -56,7 +56,7 @@ def retrieve(question, n_results=3):
     return results
 
 
-RELEVANCE_THRESHOLD = 300  # based on observed data: ~163 for relevant matches, ~400 for unrelated
+RELEVANCE_THRESHOLD = 450  # based on observed data: ~270-420 for relevant matches, ~490+ for unrelated
 
 
 def retrieve_with_fallback(question, n_results=3):
