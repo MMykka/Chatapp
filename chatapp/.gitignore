@@ -5,3 +5,5 @@ chroma_data/
 login.json
 __pycache__/
 cookies.txt
+test_ollama.py
+test_chunk.py

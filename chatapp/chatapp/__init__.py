@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template,g, redirect
+from flask import Flask, render_template, g, redirect, jsonify
 
 
 def create_app(test_config=None):
@@ -32,6 +32,12 @@ def create_app(test_config=None):
         if g.user is None:
             return redirect('/login')
         return render_template('chat.html', is_admin=bool(g.user['is_admin']), user_email=g.user['email'])
+
+    @app.route('/api/status')
+    def ollama_status():
+        from .ollama_client import check_connection
+        connected, model = check_connection()
+        return jsonify(connected=connected, model=model)
 
     from . import db
     db.init_app(app)
