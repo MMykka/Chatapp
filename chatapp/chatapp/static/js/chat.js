@@ -3,14 +3,8 @@
 // Handles: chat list, new/select/delete chat, sending messages, admin document panel,
 // and the Ollama connection status indicator.
 
-const token = localStorage.getItem('token');
-if (!token) {
-  window.location.href = '/login';
-}
-
 const authHeaders = () => ({
   'Content-Type': 'application/json',
-  'Authorization': `Bearer ${token}`,
 });
 
 // Wraps fetch: on 401 (expired/invalid token), boot back to login.
@@ -20,7 +14,6 @@ async function api(path, options = {}) {
     headers: { ...authHeaders(), ...(options.headers || {}) },
   });
   if (res.status === 401) {
-    localStorage.removeItem('token');
     window.location.href = '/login';
     throw new Error('Session expired.');
   }
@@ -194,8 +187,8 @@ composerInput.addEventListener('keydown', (e) => {
 
 newChatBtn.addEventListener('click', createChat);
 
-logoutBtn.addEventListener('click', () => {
-  localStorage.removeItem('token');
+logoutBtn.addEventListener('click', async () => {
+  await api('/api/logout', { method: 'POST' });
   window.location.href = '/login';
 });
 

@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template
+from flask import Flask, render_template,g, redirect
 
 
 def create_app(test_config=None):
@@ -25,7 +25,9 @@ def create_app(test_config=None):
 
     @app.route('/chat')
     def chat_page():
-        return render_template('chat.html', is_admin=True, user_email='you@ccintl.com')
+        if g.user is None:
+            return redirect('/login')
+        return render_template('chat.html', is_admin=bool(g.user['is_admin']), user_email=g.user['email'])
 
     from . import db
     db.init_app(app)

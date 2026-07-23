@@ -23,13 +23,9 @@ form.addEventListener('submit', async (e) => {
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new Error(data.detail || data.error || 'Incorrect email or password.');
+      throw new Error(data.error || 'Incorrect email or password.');
     }
 
-    const data = await res.json();
-    // Store the JWT. This is a locally-run internal tool, so localStorage is fine here.
-    localStorage.setItem('token', data.access_token);
-    localStorage.setItem('is_admin', data.is_admin ? '1' : '0');
     window.location.href = '/chat';
   } catch (err) {
     errorEl.textContent = err.message;
