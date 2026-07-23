@@ -1,4 +1,4 @@
-import requests
+import requests, json
 
 OLLAMA_HOST = "http://localhost:11434"
 
@@ -41,3 +41,26 @@ def get_embedding(text):
     except requests.exceptions.RequestException as e:
         print("EXCEPTION:", e)
         return None
+
+
+def chat_completion_stream(messages, context_chunks=None):
+    """Yields pieces of the reply as they're generated, instead of returning one finished string."""
+    if context_chunks:
+        context_text = "\n".join(context_chunks)
+        system_message = {"role": "system", "content": f"Use the following context to answer the question:\n{context_text}"}
+        messages = [system_message] + messages
+
+    payload = {"model": "llama3.2", "messages": messages, "stream": True}
+
+    try:
+        response = requests.post(f"{OLLAMA_HOST}/api/chat", json=payload, stream=True, timeout=30)
+        for line in response.iter_lines():
+            if line:
+                chunk = json.loads(line)
+                piece = chunk.get("message", {}).get("content", "")
+                if piece:
+                    yield piece
+                if chunk.get("done"):
+                    break
+    except requests.exceptions.RequestException:
+        yield "Sorry, I couldn't reach the model right now."

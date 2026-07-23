@@ -1,13 +1,13 @@
 // static/js/chat.js
-// Talks to the Flask JSON API using a JWT bearer token stored in localStorage.
-// Handles: chat list, new/select/delete chat, sending messages, admin document panel,
+// Talks to the Flask JSON API using session-cookie auth (sent automatically by the browser).
+// Handles: chat list, new/select/delete chat, sending messages (streamed), admin document panel,
 // and the Ollama connection status indicator.
 
 const authHeaders = () => ({
   'Content-Type': 'application/json',
 });
 
-// Wraps fetch: on 401 (expired/invalid token), boot back to login.
+// Wraps fetch: on 401 (expired/invalid session), boot back to login.
 async function api(path, options = {}) {
   const res = await fetch(path, {
     ...options,
@@ -154,13 +154,27 @@ composerForm.addEventListener('submit', async (e) => {
   scrollToBottom();
 
   try {
-    const res = await api(`/api/chats/${currentChatId}/messages`, {
+    const res = await fetch(`/api/chats/${currentChatId}/messages/stream`, {
       method: 'POST',
+      headers: authHeaders(),
       body: JSON.stringify({ content: text }),
     });
-    const data = await res.json();
+
     pending.remove();
-    appendMessage('assistant', data.content, data.sources);
+    const bubble = appendMessage('assistant', '');
+    const bubbleEl = bubble.querySelector('.msg-bubble');
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      fullText += decoder.decode(value, { stream: true });
+      bubbleEl.textContent = fullText;
+      scrollToBottom();
+    }
   } catch (err) {
     pending.querySelector('.msg-bubble').textContent = 'Something went wrong. Try again.';
     pending.classList.remove('pending');
@@ -239,8 +253,7 @@ if (docsToggleBtn) {
     try {
       const res = await fetch('/api/documents', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }, // no Content-Type: browser sets multipart boundary
-        body: formData,
+        body: formData, // no Content-Type: browser sets multipart boundary; session cookie sent automatically
       });
       if (!res.ok) throw new Error('Upload failed.');
       uploadStatus.textContent = 'Uploaded.';
