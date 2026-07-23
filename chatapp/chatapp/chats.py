@@ -5,12 +5,15 @@ import json
 from flask import Blueprint, g, jsonify, abort
 from chatapp.auth import login_required
 from chatapp.db import get_db
+from flask import request
+from chatapp.rag import retrieve_with_fallback
+from chatapp.ollama_client import chat_completion
 
 
 
 bp = Blueprint('chats', __name__, url_prefix='/api/chats')
 
-@bp.route('/', methods=('GET',))
+@bp.route('', methods=('GET',))
 @login_required
 def list_chats():
     db = get_db()
@@ -20,7 +23,7 @@ def list_chats():
     ).fetchall()
     return jsonify([dict(row) for row in chats])
    
-@bp.route('/', methods=('POST',))
+@bp.route('', methods=('POST',))
 @login_required
 def create_chat():
     db = get_db()
@@ -74,3 +77,36 @@ def list_messages(id):
         result.append(row)
 
     return jsonify(result)
+
+@bp.route('/<int:id>/messages', methods=('POST',))
+@login_required
+def send_message(id):
+    get_chat(id)
+    db = get_db()
+
+    data = request.get_json()
+    user_content = data.get('content')
+
+    db.execute(
+        'INSERT INTO messages (chat_id, role, content, sources) VALUES (?, ?, ?, ?)',
+        (id, 'user', user_content, json.dumps([]))
+    )
+    db.commit()
+
+    chunks, sources = retrieve_with_fallback(user_content)
+
+    history = db.execute(
+        'SELECT role, content FROM messages WHERE chat_id = ? ORDER BY created',
+        (id,)
+    ).fetchall()
+    messages = [{'role': m['role'], 'content': m['content']} for m in history]
+
+    reply = chat_completion(messages, context_chunks=chunks)
+
+    db.execute(
+        'INSERT INTO messages (chat_id, role, content, sources) VALUES (?, ?, ?, ?)',
+        (id, 'assistant', reply, json.dumps(sources))
+    )
+    db.commit()
+
+    return jsonify({'content': reply, 'sources': sources})
