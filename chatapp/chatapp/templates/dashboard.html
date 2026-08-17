@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}User management{% endblock %}
+{% block body %}
+<div class="app dashboard-app">
+  {% set active_section = 'users' %}
+  {% include "_dashboard_sidebar.html" %}
+
+  <main class="dashboard-main">
+    <header class="chat-header">
+      <h1>User management</h1>
+    </header>
+
+    <section class="dashboard-content">
+      <div class="user-form-card">
+        <h2>Create user</h2>
+        <form id="create-user-form" class="user-form">
+          <div class="form-row">
+            <label for="new-email">Email</label>
+            <input id="new-email" name="email" type="email" placeholder="name@company.com" required>
+          </div>
+          <div class="form-row">
+            <label for="new-password">Password</label>
+            <input id="new-password" name="password" type="password" placeholder="Temporary password" required>
+          </div>
+          <label class="checkbox-row">
+            <input id="new-is-admin" type="checkbox">
+            Admin access
+          </label>
+          <button type="submit">Create user</button>
+        </form>
+        <p id="create-user-status" class="upload-status"></p>
+      </div>
+
+      <div class="user-table-card">
+        <h2>Users</h2>
+        <table class="user-table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Admin</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="user-table-body">
+            <!-- user rows injected by dashboard.js -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

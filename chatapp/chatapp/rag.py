@@ -16,6 +16,7 @@ def chunk_text(text, chunk_size=500, overlap=50):
     return chunks
 
 
+
 def extract_text(filepath):
     if filepath.endswith('.pdf'):
         from pypdf import PdfReader

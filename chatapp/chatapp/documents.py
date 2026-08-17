@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify, g
 from chatapp.db import get_db
 from chatapp.auth import admin_required
 from chatapp.rag import add_document, delete_document
+from chatapp.activity_log import log_activity
 
 bp = Blueprint('documents', __name__, url_prefix='/api/documents')
 
@@ -27,6 +28,7 @@ def upload():
         'INSERT INTO documents (filename, uploaded_by) VALUES (?, ?)',
         (file.filename, g.user['id'])
     )
+    log_activity(db, 'document_uploaded', f"Uploaded document '{file.filename}'")
     db.commit()
 
     add_document(filepath, file.filename)
@@ -51,6 +53,7 @@ def delete(id):
         return jsonify({'error': 'Document not found.'}), 404
 
     db.execute('DELETE FROM documents WHERE id = ?', (id,))
+    log_activity(db, 'document_deleted', f"Deleted document '{doc['filename']}'")
     db.commit()
 
     os.remove(os.path.join(UPLOAD_FOLDER, doc['filename']))

@@ -1,0 +1,19 @@
+<aside class="sidebar">
+  <div class="sidebar-top">
+    <a href="/chat" class="ghost-btn">&larr; Back to chat</a>
+  </div>
+
+  <nav class="dashboard-nav">
+    <a href="/dashboard" class="dashboard-nav-btn{% if active_section == 'users' %} active{% endif %}">User management</a>
+    <a href="/dashboard/documents" class="dashboard-nav-btn{% if active_section == 'documents' %} active{% endif %}">Documents</a>
+    <a href="/dashboard/model" class="dashboard-nav-btn{% if active_section == 'model' %} active{% endif %}">Model</a>
+    <a href="/dashboard/logs" class="dashboard-nav-btn{% if active_section == 'logs' %} active{% endif %}">Logs</a>
+  </nav>
+
+  <div class="sidebar-bottom">
+    <div class="user-row">
+      <span id="user-email" class="user-email">{{ user_email }}</span>
+      <a href="/settings" class="ghost-btn small icon-btn" title="Settings">⚙</a>
+    </div>
+  </div>
+</aside>

@@ -3,7 +3,6 @@ from flask import Flask, render_template, g, redirect, jsonify
 
 
 def create_app(test_config=None):
-    #create and configure the app
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_mapping(
         SECRET_KEY="dev",
@@ -11,12 +10,10 @@ def create_app(test_config=None):
     )
 
     if test_config is None:
-        #load the instance config, if it exists, when not testing
         app.config.from_pyfile("config.py" , silent=True)
     else:
-        # load the test config if passed in
         app.config.from_mapping(test_config)
-    # ensure the instance folder exists
+        
     os.makedirs(app.instance_path, exist_ok=True)
 
     @app.route('/')
@@ -32,6 +29,44 @@ def create_app(test_config=None):
         if g.user is None:
             return redirect('/login')
         return render_template('chat.html', is_admin=bool(g.user['is_admin']), user_email=g.user['email'])
+
+    @app.route('/dashboard')
+    def dashboard_page():
+        if g.user is None:
+            return redirect('/login')
+        if not g.user['is_admin']:
+            return redirect('/chat')
+        return render_template('dashboard.html', user_email=g.user['email'])
+
+    @app.route('/dashboard/documents')
+    def dashboard_documents_page():
+        if g.user is None:
+            return redirect('/login')
+        if not g.user['is_admin']:
+            return redirect('/chat')
+        return render_template('dashboard_documents.html', user_email=g.user['email'])
+
+    @app.route('/dashboard/model')
+    def dashboard_model_page():
+        if g.user is None:
+            return redirect('/login')
+        if not g.user['is_admin']:
+            return redirect('/chat')
+        return render_template('dashboard_model.html', user_email=g.user['email'])
+
+    @app.route('/dashboard/logs')
+    def dashboard_logs_page():
+        if g.user is None:
+            return redirect('/login')
+        if not g.user['is_admin']:
+            return redirect('/chat')
+        return render_template('dashboard_logs.html', user_email=g.user['email'])
+
+    @app.route('/settings')
+    def settings_page():
+        if g.user is None:
+            return redirect('/login')
+        return render_template('settings.html', user_email=g.user['email'], user_id=g.user['id'])
 
     @app.route('/api/status')
     def ollama_status():
@@ -50,5 +85,14 @@ def create_app(test_config=None):
 
     from . import documents
     app.register_blueprint(documents.bp)
+
+    from . import users
+    app.register_blueprint(users.bp)
+
+    from . import admin_model
+    app.register_blueprint(admin_model.bp)
+
+    from . import activity_log
+    app.register_blueprint(activity_log.bp)
 
     return app

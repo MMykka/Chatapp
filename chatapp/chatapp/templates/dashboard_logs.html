@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+{% block body %}
+<div class="app dashboard-app">
+  {% set active_section = 'logs' %}
+  {% include "_dashboard_sidebar.html" %}
+
+  <main class="dashboard-main">
+    <header class="chat-header">
+      <h1>Logs</h1>
+    </header>
+
+    <section class="dashboard-content dashboard-content-wide">
+      <div class="user-table-card">
+        <h2>System activity</h2>
+        <p class="docs-hint">Every chat, message, and user/document change made across the system, most recent first.</p>
+        <table class="user-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>User</th>
+              <th>Action</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody id="activity-log-body">
+            <!-- log rows injected by dashboard_logs.js -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="{{ url_for('static', filename='js/dashboard_logs.js') }}"></script>
+{% endblock %}

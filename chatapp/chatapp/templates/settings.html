@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block body %}
+<div class="app dashboard-app">
+
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <a href="/chat" class="ghost-btn">&larr; Back to chat</a>
+    </div>
+
+    <nav class="dashboard-nav">
+      <a href="/settings" class="dashboard-nav-btn active">Statistics</a>
+    </nav>
+
+    <div class="sidebar-bottom">
+      <div class="user-row">
+        <span id="user-email" class="user-email">{{ user_email }}</span>
+      </div>
+      <button id="logout-btn" class="ghost-btn small">Log out</button>
+    </div>
+  </aside>
+
+  <main class="dashboard-main">
+    <header class="chat-header">
+      <h1>Statistics</h1>
+    </header>
+
+    <section class="dashboard-content">
+      <div class="stats-grid">
+        <div class="stat-tile">
+          <span id="stat-conversations" class="stat-value">—</span>
+          <span class="stat-label">Total conversations</span>
+        </div>
+        <div class="stat-tile">
+          <span id="stat-tokens" class="stat-value">—</span>
+          <span class="stat-label">Total tokens used</span>
+        </div>
+        <div class="stat-tile">
+          <span id="stat-avg-tokens" class="stat-value">—</span>
+          <span class="stat-label">Average tokens per message</span>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>window.CURRENT_USER_ID = {{ user_id }};</script>
+<script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Documents{% endblock %}
+{% block body %}
+<div class="app dashboard-app">
+  {% set active_section = 'documents' %}
+  {% include "_dashboard_sidebar.html" %}
+
+  <main class="dashboard-main">
+    <header class="chat-header">
+      <h1>Documents</h1>
+    </header>
+
+    <section class="dashboard-content">
+      <div class="user-form-card">
+        <h2>Upload document</h2>
+        <p class="docs-hint">Uploaded files become searchable context for every chat.</p>
+        <form id="upload-form" class="upload-form">
+          <div class="file-picker-wrap">
+            <input type="file" id="doc-file" name="file" accept=".txt,.md,.pdf" required class="visually-hidden">
+            <label for="doc-file" class="file-picker">
+              <span class="file-picker-btn">Choose file</span>
+              <span id="file-picker-name" class="file-picker-name">No file selected</span>
+            </label>
+          </div>
+          <button type="submit">Upload</button>
+        </form>
+        <p id="upload-status" class="upload-status"></p>
+      </div>
+
+      <div class="user-table-card">
+        <h2>Documents</h2>
+        <ul id="doc-list" class="doc-list">
+          <!-- document items injected by dashboard_documents.js -->
+        </ul>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="{{ url_for('static', filename='js/dashboard_documents.js') }}"></script>
+{% endblock %}

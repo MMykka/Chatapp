@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Model{% endblock %}
+{% block body %}
+<div class="app dashboard-app">
+  {% set active_section = 'model' %}
+  {% include "_dashboard_sidebar.html" %}
+
+  <main class="dashboard-main">
+    <header class="chat-header">
+      <h1>Model</h1>
+    </header>
+
+    <section class="dashboard-content">
+      <div class="stats-grid">
+        <div class="stat-tile">
+          <span id="model-status-value" class="stat-value">—</span>
+          <span class="stat-label">Connection status</span>
+        </div>
+        <div class="stat-tile">
+          <span id="model-name-value" class="stat-value">—</span>
+          <span class="stat-label">Active model</span>
+        </div>
+      </div>
+
+      <div class="user-table-card">
+        <h2>Recent activity</h2>
+        <table class="user-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Duration</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody id="model-log-body">
+            <!-- log rows injected by dashboard_model.js -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="{{ url_for('static', filename='js/dashboard_model.js') }}"></script>
+{% endblock %}
