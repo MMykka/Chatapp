@@ -11,19 +11,16 @@ from chatapp.db import get_db
 from chatapp.rag import retrieve_with_fallback
 from chatapp.ollama_client import chat_completion, chat_completion_stream, MODEL_NAME
 from chatapp.activity_log import log_activity
+from chatapp import cache
 
 
 bp = Blueprint('chats', __name__, url_prefix='/api/chats')
 
-# Heuristic denominator for the streaming completion percentage. Ollama never
-# reports an expected total token count up front, so this just approximates
-# a typical reply length; the final SSE event always forces 100% regardless.
+
 EXPECTED_RESPONSE_TOKENS = 300
 
 
 def _iso(dt):
-    # SQLite's CURRENT_TIMESTAMP is UTC but comes back as a naive datetime;
-    # append Z so JS's Date() parses it as UTC instead of local time.
     return dt.isoformat() + 'Z' if dt else None
 
 
@@ -42,7 +39,7 @@ def list_chats():
     ).fetchone()['c']
 
     chats = db.execute(
-        'SELECT id, title, created, updated FROM chats WHERE user_id = ? ORDER BY updated DESC LIMIT ? OFFSET ?',
+        'SELECT id, title, folder_id, created, updated FROM chats WHERE user_id = ? ORDER BY updated DESC LIMIT ? OFFSET ?',
         (g.user['id'], limit, offset)
     ).fetchall()
 
@@ -51,6 +48,7 @@ def list_chats():
             {
                 'id': c['id'],
                 'title': c['title'],
+                'folder_id': c['folder_id'],
                 'created': _iso(c['created']),
                 'updated': _iso(c['updated']),
             }
@@ -59,6 +57,63 @@ def list_chats():
         'total': total,
         'limit': limit,
         'offset': offset,
+    })
+
+
+def _snippet(text, query, radius=60):
+    if not text:
+        return ''
+
+    idx = text.lower().find(query.lower())
+    if idx == -1:
+        return text[:radius * 2].strip()
+
+    start = max(0, idx - radius)
+    end = min(len(text), idx + len(query) + radius)
+    snippet = text[start:end].strip()
+    if start > 0:
+        snippet = '…' + snippet
+    if end < len(text):
+        snippet = snippet + '…'
+    return snippet
+
+
+@bp.route('/search', methods=('GET',))
+@login_required
+def search_chats():
+    query = (request.args.get('q') or '').strip()
+    if not query:
+        return jsonify({'results': []})
+
+    db = get_db()
+    like = f'%{query}%'
+    rows = db.execute(
+        '''
+        SELECT c.id, c.title, c.updated,
+          (SELECT content FROM messages m
+           WHERE m.chat_id = c.id AND m.content LIKE ?
+           ORDER BY m.created LIMIT 1) AS match
+        FROM chats c
+        WHERE c.user_id = ?
+          AND (c.title LIKE ? OR EXISTS (
+            SELECT 1 FROM messages m WHERE m.chat_id = c.id AND m.content LIKE ?
+          ))
+        ORDER BY c.updated DESC
+        LIMIT 50
+        ''',
+        (like, g.user['id'], like, like)
+    ).fetchall()
+
+    return jsonify({
+        'results': [
+            {
+                'id': r['id'],
+                'title': r['title'],
+                'updated': _iso(r['updated']),
+                'snippet': _snippet(r['match'], query),
+            }
+            for r in rows
+        ]
     })
 
 
@@ -94,13 +149,24 @@ def get_chat(id):
 @login_required
 def get_chat_detail(id):
     chat = get_chat(id)
-    return jsonify({
+
+    # Reopening a chat re-runs the same join/serialize on every click, so a
+    # short-lived cache saves the round trip for chats people flip back to.
+    cache_key = f'chat_detail:{id}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
+
+    payload = {
         'id': chat['id'],
         'title': chat['title'],
+        'folder_id': chat['folder_id'],
         'created': _iso(chat['created']),
         'updated': _iso(chat['updated']),
         'messages': _serialize_messages(id),
-    })
+    }
+    cache.set(cache_key, payload)
+    return jsonify(payload)
 
 
 @bp.route('/<int:id>', methods=('PUT',))
@@ -117,6 +183,7 @@ def rename_chat(id):
     db.execute('UPDATE chats SET title = ?, updated = CURRENT_TIMESTAMP WHERE id = ?', (title, id))
     log_activity(db, 'chat_renamed', f"Renamed chat #{id} from '{chat['title']}' to '{title}'")
     db.commit()
+    cache.invalidate(f'chat_detail:{id}')
     return jsonify({'id': id, 'title': title})
 
 
@@ -129,7 +196,30 @@ def delete_chat(id):
     db.execute('DELETE FROM chats WHERE id = ?', (id,))
     log_activity(db, 'chat_deleted', f"Deleted chat #{id} ('{chat['title']}')")
     db.commit()
+    cache.invalidate(f'chat_detail:{id}')
     return jsonify({'success': True})
+
+
+@bp.route('/<int:id>/folder', methods=('PUT',))
+@login_required
+def move_chat(id):
+    chat = get_chat(id)
+    data = request.get_json() or {}
+    folder_id = data.get('folder_id')
+
+    db = get_db()
+    if folder_id is not None:
+        folder = db.execute(
+            'SELECT id FROM folders WHERE id = ? AND user_id = ?', (folder_id, g.user['id'])
+        ).fetchone()
+        if folder is None:
+            abort(404, f"Folder id {folder_id} doesn't exist.")
+
+    db.execute('UPDATE chats SET folder_id = ? WHERE id = ?', (folder_id, id))
+    log_activity(db, 'chat_moved', f"Moved chat #{id} ('{chat['title']}') to folder {folder_id}")
+    db.commit()
+    cache.invalidate(f'chat_detail:{id}')
+    return jsonify({'id': id, 'folder_id': folder_id})
 
 
 def _serialize_messages(id):
@@ -171,6 +261,7 @@ def send_message(id):
     db.execute('UPDATE chats SET updated = CURRENT_TIMESTAMP WHERE id = ?', (id,))
     log_activity(db, 'message_sent', f"Sent a message in chat #{id}")
     db.commit()
+    cache.invalidate(f'chat_detail:{id}')
 
     chunks, sources = retrieve_with_fallback(user_content)
 
@@ -189,6 +280,7 @@ def send_message(id):
         (id, 'assistant', reply['content'], json.dumps(sources), reply['model'], reply['tokens_used'], response_time)
     )
     db.commit()
+    cache.invalidate(f'chat_detail:{id}')
 
     return jsonify({'content': reply['content'], 'sources': sources, 'response_time': response_time})
 
@@ -209,6 +301,7 @@ def send_message_stream(id):
     db.execute('UPDATE chats SET updated = CURRENT_TIMESTAMP WHERE id = ?', (id,))
     log_activity(db, 'message_sent', f"Sent a message in chat #{id}")
     db.commit()
+    cache.invalidate(f'chat_detail:{id}')
 
     chunks, sources = retrieve_with_fallback(user_content)
 
@@ -254,6 +347,7 @@ def send_message_stream(id):
         )
         conn.commit()
         conn.close()
+        cache.invalidate(f'chat_detail:{id}')
 
         yield sse_event({
             'content': '',

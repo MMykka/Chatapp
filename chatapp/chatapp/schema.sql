@@ -3,6 +3,7 @@ DROP TABLE IF EXISTS chats;
 DROP TABLE IF EXISTS messages;
 DROP TABLE IF EXISTS documents;
 DROP TABLE IF EXISTS activity_log;
+DROP TABLE IF EXISTS folders;
 
 
 CREATE TABLE user (
@@ -14,13 +15,24 @@ CREATE TABLE user (
 );
 
 
+CREATE TABLE folders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES user (id) ON DELETE CASCADE
+);
+
+
 CREATE TABLE chats (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   title TEXT,
+  folder_id INTEGER,
   created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES user (id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES user (id) ON DELETE CASCADE,
+  FOREIGN KEY (folder_id) REFERENCES folders (id) ON DELETE SET NULL
 );
 
 
@@ -55,6 +67,8 @@ CREATE TABLE activity_log (
 
 CREATE INDEX idx_chats_user_id ON chats (user_id);
 CREATE INDEX idx_chats_created ON chats (created);
+CREATE INDEX idx_chats_folder_id ON chats (folder_id);
 CREATE INDEX idx_messages_chat_id ON messages (chat_id);
 CREATE INDEX idx_messages_created ON messages (created);
 CREATE INDEX idx_activity_log_created ON activity_log (created);
+CREATE INDEX idx_folders_user_id ON folders (user_id);

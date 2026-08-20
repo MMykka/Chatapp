@@ -83,6 +83,9 @@ def create_app(test_config=None):
     from . import chats
     app.register_blueprint(chats.bp)
 
+    from . import folders
+    app.register_blueprint(folders.bp)
+
     from . import documents
     app.register_blueprint(documents.bp)
 

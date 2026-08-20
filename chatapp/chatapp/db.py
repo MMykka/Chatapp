@@ -46,10 +46,13 @@ def _ensure_schema(db):
         if 'updated' not in columns:
             db.execute('ALTER TABLE chats ADD COLUMN updated TIMESTAMP')
             db.execute("UPDATE chats SET updated = created WHERE updated IS NULL")
+        if 'folder_id' not in columns:
+            db.execute('ALTER TABLE chats ADD COLUMN folder_id INTEGER')
 
     if _table_exists(db, 'chats'):
         db.execute('CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats (user_id)')
         db.execute('CREATE INDEX IF NOT EXISTS idx_chats_created ON chats (created)')
+        db.execute('CREATE INDEX IF NOT EXISTS idx_chats_folder_id ON chats (folder_id)')
     if _table_exists(db, 'messages'):
         db.execute('CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages (chat_id)')
         db.execute('CREATE INDEX IF NOT EXISTS idx_messages_created ON messages (created)')
@@ -64,6 +67,17 @@ def _ensure_schema(db):
         )
     ''')
     db.execute('CREATE INDEX IF NOT EXISTS idx_activity_log_created ON activity_log (created)')
+
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS folders (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES user (id) ON DELETE CASCADE
+        )
+    ''')
+    db.execute('CREATE INDEX IF NOT EXISTS idx_folders_user_id ON folders (user_id)')
 
     db.commit()
 

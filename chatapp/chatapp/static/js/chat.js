@@ -29,15 +29,38 @@ const statusText = document.getElementById('ollama-status-text');
 const modelNameLabel = document.getElementById('model-name-label');
 const exportBtn = document.getElementById('export-btn');
 const exportMenu = document.getElementById('export-menu');
+const chatSearchInput = document.getElementById('chat-search-input');
+const newFolderBtn = document.getElementById('new-folder-btn');
 
 let currentChatId = null;
+let allChats = [];
+let folders = [];
+let searchQuery = '';
+let searchResults = [];
+let searchDebounce = null;
+const collapsedFolders = new Set();
+let chatsSectionCollapsed = false;
+let foldersSectionCollapsed = false;
 
 
 async function loadChats() {
-  const res = await api('/api/chats');
-  const data = await res.json();
-  renderChatList(data.chats);
-  return data.chats;
+  const [chatsRes, foldersRes] = await Promise.all([
+    api('/api/chats'),
+    api('/api/folders'),
+  ]);
+  const data = await chatsRes.json();
+  allChats = data.chats;
+  folders = await foldersRes.json();
+  refreshSidebar();
+  return allChats;
+}
+
+function refreshSidebar() {
+  if (searchQuery) {
+    renderSearchResults();
+  } else {
+    renderChatList(allChats);
+  }
 }
 
 function formatChatTime(isoString) {
@@ -53,74 +76,331 @@ function formatChatTime(isoString) {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+function renderChatItem(chat) {
+  const item = document.createElement('div');
+  item.className = 'chat-item' + (chat.id === currentChatId ? ' active' : '');
+  item.dataset.id = chat.id;
+
+  const main = document.createElement('div');
+  main.className = 'chat-item-main';
+
+  const label = document.createElement('span');
+  label.className = 'chat-item-title';
+  label.textContent = chat.title || 'Untitled chat';
+  main.appendChild(label);
+
+  const time = document.createElement('span');
+  time.className = 'chat-item-time';
+  time.textContent = formatChatTime(chat.updated);
+  main.appendChild(time);
+
+  item.appendChild(main);
+
+  const menu = document.createElement('div');
+  menu.className = 'chat-item-menu';
+
+  const menuBtn = document.createElement('button');
+  menuBtn.type = 'button';
+  menuBtn.className = 'menu-trigger';
+  menuBtn.textContent = '⋮';
+  menuBtn.title = 'More options';
+  menuBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMenu(dropdown);
+  });
+  menu.appendChild(menuBtn);
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'menu-dropdown';
+  dropdown.hidden = true;
+
+  const renameBtn = document.createElement('button');
+  renameBtn.type = 'button';
+  renameBtn.className = 'menu-option';
+  renameBtn.textContent = 'Rename';
+  renameBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeAllMenus();
+    startInlineRename(label, chat);
+  });
+  dropdown.appendChild(renameBtn);
+
+  if (folders.length) {
+    const availableFolders = folders.filter((f) => f.id !== chat.folder_id);
+    const showMove = availableFolders.length > 0;
+    const showRemove = !!chat.folder_id;
+
+    if (showMove || showRemove) {
+      const divider = document.createElement('div');
+      divider.className = 'menu-divider';
+      dropdown.appendChild(divider);
+    }
+
+    if (showMove) {
+      const moveOption = document.createElement('button');
+      moveOption.type = 'button';
+      moveOption.className = 'menu-option';
+      moveOption.textContent = 'Move to folder';
+      moveOption.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        closeAllMenus();
+
+        // Skip the picker when there's only one place it could go.
+        if (availableFolders.length === 1) {
+          await moveChatToFolder(chat.id, availableFolders[0].id);
+          return;
+        }
+
+        const folderId = await showFolderPickerModal(availableFolders);
+        if (folderId != null) await moveChatToFolder(chat.id, folderId);
+      });
+      dropdown.appendChild(moveOption);
+    }
+
+    if (showRemove) {
+      const removeOption = document.createElement('button');
+      removeOption.type = 'button';
+      removeOption.className = 'menu-option';
+      removeOption.textContent = 'Remove from folder';
+      removeOption.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeAllMenus();
+        moveChatToFolder(chat.id, null);
+      });
+      dropdown.appendChild(removeOption);
+    }
+  }
+
+  const deleteOption = document.createElement('button');
+  deleteOption.type = 'button';
+  deleteOption.className = 'menu-option danger';
+  deleteOption.textContent = 'Delete';
+  deleteOption.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeAllMenus();
+    deleteChat(chat.id, chat.title);
+  });
+  dropdown.appendChild(deleteOption);
+
+  menu.appendChild(dropdown);
+  item.appendChild(menu);
+
+  item.addEventListener('click', () => openChat(chat.id, chat.title));
+  return item;
+}
+
+async function moveChatToFolder(chatId, folderId) {
+  await api(`/api/chats/${chatId}/folder`, {
+    method: 'PUT',
+    body: JSON.stringify({ folder_id: folderId }),
+  });
+  await loadChats();
+}
+
+function renderFolderSection(folder, chatsInFolder) {
+  const section = document.createElement('div');
+  section.className = 'folder-section';
+
+  const collapsed = collapsedFolders.has(folder.id);
+
+  const header = document.createElement('div');
+  header.className = 'folder-header';
+  header.addEventListener('click', () => {
+    if (collapsed) collapsedFolders.delete(folder.id);
+    else collapsedFolders.add(folder.id);
+    renderChatList(allChats);
+  });
+
+  const toggle = document.createElement('span');
+  toggle.className = 'folder-toggle';
+  toggle.textContent = collapsed ? '▸' : '▾';
+  header.appendChild(toggle);
+
+  const name = document.createElement('span');
+  name.className = 'folder-name';
+  name.textContent = folder.name;
+  header.appendChild(name);
+
+  const count = document.createElement('span');
+  count.className = 'folder-count';
+  count.textContent = chatsInFolder.length;
+  header.appendChild(count);
+
+  const menu = document.createElement('div');
+  menu.className = 'chat-item-menu';
+
+  const menuBtn = document.createElement('button');
+  menuBtn.type = 'button';
+  menuBtn.className = 'menu-trigger';
+  menuBtn.textContent = '⋮';
+  menuBtn.title = 'More options';
+  menuBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMenu(dropdown);
+  });
+  menu.appendChild(menuBtn);
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'menu-dropdown';
+  dropdown.hidden = true;
+
+  const renameBtn = document.createElement('button');
+  renameBtn.type = 'button';
+  renameBtn.className = 'menu-option';
+  renameBtn.textContent = 'Rename folder';
+  renameBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    closeAllMenus();
+    await renameFolder(folder);
+  });
+  dropdown.appendChild(renameBtn);
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'menu-option danger';
+  deleteBtn.textContent = 'Delete folder';
+  deleteBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    closeAllMenus();
+    await deleteFolder(folder);
+  });
+  dropdown.appendChild(deleteBtn);
+
+  menu.appendChild(dropdown);
+  header.appendChild(menu);
+  section.appendChild(header);
+
+  if (!collapsed) {
+    const items = document.createElement('div');
+    items.className = 'folder-items';
+    chatsInFolder.forEach((chat) => items.appendChild(renderChatItem(chat)));
+    section.appendChild(items);
+  }
+
+  return section;
+}
+
 function renderChatList(chats) {
   chatListEl.innerHTML = '';
+
+  const chatsByFolder = new Map();
+  const unfiled = [];
   chats.forEach((chat) => {
+    if (chat.folder_id) {
+      if (!chatsByFolder.has(chat.folder_id)) chatsByFolder.set(chat.folder_id, []);
+      chatsByFolder.get(chat.folder_id).push(chat);
+    } else {
+      unfiled.push(chat);
+    }
+  });
+
+  if (folders.length) {
+    const foldersHeader = document.createElement('div');
+    foldersHeader.className = 'sidebar-section-header';
+    foldersHeader.addEventListener('click', () => {
+      foldersSectionCollapsed = !foldersSectionCollapsed;
+      renderChatList(allChats);
+    });
+
+    const foldersToggle = document.createElement('span');
+    foldersToggle.className = 'folder-toggle';
+    foldersToggle.textContent = foldersSectionCollapsed ? '▸' : '▾';
+    foldersHeader.appendChild(foldersToggle);
+
+    const foldersTitle = document.createElement('span');
+    foldersTitle.className = 'sidebar-section-title';
+    foldersTitle.textContent = 'Folders';
+    foldersHeader.appendChild(foldersTitle);
+
+    const foldersCount = document.createElement('span');
+    foldersCount.className = 'folder-count';
+    foldersCount.textContent = folders.length;
+    foldersHeader.appendChild(foldersCount);
+
+    chatListEl.appendChild(foldersHeader);
+
+    if (!foldersSectionCollapsed) {
+      folders.forEach((folder) => {
+        chatListEl.appendChild(renderFolderSection(folder, chatsByFolder.get(folder.id) || []));
+      });
+    }
+  }
+
+  // A chat filed into a folder only shows there — this section is just the unfiled leftovers.
+  const chatsHeader = document.createElement('div');
+  chatsHeader.className = 'sidebar-section-header';
+  chatsHeader.addEventListener('click', () => {
+    chatsSectionCollapsed = !chatsSectionCollapsed;
+    renderChatList(allChats);
+  });
+
+  const chatsToggle = document.createElement('span');
+  chatsToggle.className = 'folder-toggle';
+  chatsToggle.textContent = chatsSectionCollapsed ? '▸' : '▾';
+  chatsHeader.appendChild(chatsToggle);
+
+  const chatsTitle = document.createElement('span');
+  chatsTitle.className = 'sidebar-section-title';
+  chatsTitle.textContent = 'Chats';
+  chatsHeader.appendChild(chatsTitle);
+
+  const chatsCount = document.createElement('span');
+  chatsCount.className = 'folder-count';
+  chatsCount.textContent = unfiled.length;
+  chatsHeader.appendChild(chatsCount);
+
+  chatListEl.appendChild(chatsHeader);
+
+  if (!chatsSectionCollapsed) {
+    unfiled.forEach((chat) => chatListEl.appendChild(renderChatItem(chat)));
+  }
+}
+
+function renderSearchResults() {
+  chatListEl.innerHTML = '';
+
+  if (!searchResults.length) {
+    const empty = document.createElement('div');
+    empty.className = 'search-empty';
+    empty.textContent = 'No matching chats.';
+    chatListEl.appendChild(empty);
+    return;
+  }
+
+  searchResults.forEach((result) => {
     const item = document.createElement('div');
-    item.className = 'chat-item' + (chat.id === currentChatId ? ' active' : '');
-    item.dataset.id = chat.id;
+    item.className = 'chat-item' + (result.id === currentChatId ? ' active' : '');
+    item.dataset.id = result.id;
 
     const main = document.createElement('div');
     main.className = 'chat-item-main';
 
     const label = document.createElement('span');
     label.className = 'chat-item-title';
-    label.textContent = chat.title || 'Untitled chat';
+    label.textContent = result.title || 'Untitled chat';
     main.appendChild(label);
 
-    const time = document.createElement('span');
-    time.className = 'chat-item-time';
-    time.textContent = formatChatTime(chat.updated);
-    main.appendChild(time);
+    if (result.snippet) {
+      const snippet = document.createElement('span');
+      snippet.className = 'chat-item-snippet';
+      snippet.textContent = result.snippet;
+      main.appendChild(snippet);
+    }
 
     item.appendChild(main);
-
-    const menu = document.createElement('div');
-    menu.className = 'chat-item-menu';
-
-    const menuBtn = document.createElement('button');
-    menuBtn.type = 'button';
-    menuBtn.className = 'menu-trigger';
-    menuBtn.textContent = '⋮';
-    menuBtn.title = 'More options';
-    menuBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleMenu(dropdown);
+    item.addEventListener('click', () => {
+      clearSearch();
+      openChat(result.id, result.title);
     });
-    menu.appendChild(menuBtn);
-
-    const dropdown = document.createElement('div');
-    dropdown.className = 'menu-dropdown';
-    dropdown.hidden = true;
-
-    const renameBtn = document.createElement('button');
-    renameBtn.type = 'button';
-    renameBtn.className = 'menu-option';
-    renameBtn.textContent = 'Rename';
-    renameBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeAllMenus();
-      startInlineRename(label, chat);
-    });
-    dropdown.appendChild(renameBtn);
-
-    const deleteOption = document.createElement('button');
-    deleteOption.type = 'button';
-    deleteOption.className = 'menu-option danger';
-    deleteOption.textContent = 'Delete';
-    deleteOption.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeAllMenus();
-      deleteChat(chat.id, chat.title);
-    });
-    dropdown.appendChild(deleteOption);
-
-    menu.appendChild(dropdown);
-    item.appendChild(menu);
-
-    item.addEventListener('click', () => openChat(chat.id, chat.title));
     chatListEl.appendChild(item);
   });
+}
+
+function clearSearch() {
+  searchQuery = '';
+  searchResults = [];
+  chatSearchInput.value = '';
+  refreshSidebar();
 }
 
 function closeAllMenus() {
@@ -185,6 +465,218 @@ async function createChat() {
   const chat = await res.json();
   await loadChats();
   openChat(chat.id, chat.title);
+}
+
+function showTextPromptModal({ title, label, placeholder = '', initialValue = '', confirmLabel = 'Save' }) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'modal-dialog';
+
+    const heading = document.createElement('h2');
+    heading.textContent = title;
+    dialog.appendChild(heading);
+
+    const labelEl = document.createElement('label');
+    labelEl.className = 'modal-label';
+    labelEl.textContent = label;
+    labelEl.htmlFor = 'text-prompt-input';
+    dialog.appendChild(labelEl);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = 'text-prompt-input';
+    input.className = 'modal-input';
+    input.autocomplete = 'off';
+    input.placeholder = placeholder;
+    input.value = initialValue;
+    dialog.appendChild(input);
+
+    const actions = document.createElement('div');
+    actions.className = 'modal-actions';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'ghost-btn small';
+    cancelBtn.textContent = 'Cancel';
+    actions.appendChild(cancelBtn);
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'modal-confirm-btn';
+    confirmBtn.textContent = confirmLabel;
+    actions.appendChild(confirmBtn);
+
+    dialog.appendChild(actions);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    input.focus();
+    input.select();
+
+    function close(result) {
+      document.removeEventListener('keydown', onKeydown);
+      overlay.remove();
+      resolve(result);
+    }
+
+    function onKeydown(e) {
+      if (e.key === 'Escape') close(null);
+    }
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); close(input.value.trim() || null); }
+    });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+    document.addEventListener('keydown', onKeydown);
+    cancelBtn.addEventListener('click', () => close(null));
+    confirmBtn.addEventListener('click', () => close(input.value.trim() || null));
+  });
+}
+
+function showConfirmModal({ title, body, confirmLabel = 'Confirm' }) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'modal-dialog';
+
+    const heading = document.createElement('h2');
+    heading.textContent = title;
+    dialog.appendChild(heading);
+
+    const bodyEl = document.createElement('p');
+    bodyEl.className = 'modal-body';
+    bodyEl.textContent = body;
+    dialog.appendChild(bodyEl);
+
+    const actions = document.createElement('div');
+    actions.className = 'modal-actions';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'ghost-btn small';
+    cancelBtn.textContent = 'Cancel';
+    actions.appendChild(cancelBtn);
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'modal-danger-btn';
+    confirmBtn.textContent = confirmLabel;
+    actions.appendChild(confirmBtn);
+
+    dialog.appendChild(actions);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    function close(result) {
+      document.removeEventListener('keydown', onKeydown);
+      overlay.remove();
+      resolve(result);
+    }
+
+    function onKeydown(e) {
+      if (e.key === 'Escape') close(false);
+    }
+
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
+    document.addEventListener('keydown', onKeydown);
+    cancelBtn.addEventListener('click', () => close(false));
+    confirmBtn.addEventListener('click', () => close(true));
+  });
+}
+
+function showFolderPickerModal(folderOptions) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'modal-dialog';
+
+    const heading = document.createElement('h2');
+    heading.textContent = 'Move to folder';
+    dialog.appendChild(heading);
+
+    const list = document.createElement('div');
+    list.className = 'folder-picker-list';
+    folderOptions.forEach((folder) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'folder-picker-option';
+      option.textContent = folder.name;
+      option.addEventListener('click', () => close(folder.id));
+      list.appendChild(option);
+    });
+    dialog.appendChild(list);
+
+    const actions = document.createElement('div');
+    actions.className = 'modal-actions';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'ghost-btn small';
+    cancelBtn.textContent = 'Cancel';
+    actions.appendChild(cancelBtn);
+
+    dialog.appendChild(actions);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    function close(result) {
+      document.removeEventListener('keydown', onKeydown);
+      overlay.remove();
+      resolve(result);
+    }
+
+    function onKeydown(e) {
+      if (e.key === 'Escape') close(null);
+    }
+
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+    document.addEventListener('keydown', onKeydown);
+    cancelBtn.addEventListener('click', () => close(null));
+  });
+}
+
+async function createFolder() {
+  const name = await showTextPromptModal({
+    title: 'New folder',
+    label: 'Folder name',
+    placeholder: 'e.g. Work',
+    confirmLabel: 'Create',
+  });
+  if (!name) return;
+
+  await api('/api/folders', { method: 'POST', body: JSON.stringify({ name }) });
+  await loadChats();
+}
+
+async function renameFolder(folder) {
+  const name = await showTextPromptModal({
+    title: 'Rename folder',
+    label: 'Folder name',
+    initialValue: folder.name,
+    confirmLabel: 'Save',
+  });
+  if (!name || name === folder.name) return;
+
+  await api(`/api/folders/${folder.id}`, { method: 'PUT', body: JSON.stringify({ name }) });
+  await loadChats();
+}
+
+async function deleteFolder(folder) {
+  const confirmed = await showConfirmModal({
+    title: 'Delete folder',
+    body: `This will delete "${folder.name}". Chats inside it will move back to the unfiled list.`,
+    confirmLabel: 'Delete folder',
+  });
+  if (!confirmed) return;
+
+  await api(`/api/folders/${folder.id}`, { method: 'DELETE' });
+  await loadChats();
 }
 
 function showDeleteChatModal(title) {
@@ -465,6 +957,25 @@ composerInput.addEventListener('keydown', (e) => {
 });
 
 newChatBtn.addEventListener('click', createChat);
+newFolderBtn.addEventListener('click', createFolder);
+
+chatSearchInput.addEventListener('input', () => {
+  searchQuery = chatSearchInput.value.trim();
+  clearTimeout(searchDebounce);
+
+  if (!searchQuery) {
+    searchResults = [];
+    refreshSidebar();
+    return;
+  }
+
+  searchDebounce = setTimeout(async () => {
+    const res = await api(`/api/chats/search?q=${encodeURIComponent(searchQuery)}`);
+    const data = await res.json();
+    searchResults = data.results;
+    refreshSidebar();
+  }, 250);
+});
 
 
 async function checkStatus() {
